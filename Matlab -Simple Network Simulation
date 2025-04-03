@@ -1,0 +1,128 @@
+B = 100e6;
+packet_size = 1024;
+Tp = 0.01;
+sim_time = 30;
+lambda1 = 200;
+lambda2 = 200;
+queue_size = 100;
+
+% Optimization 1: Pre-allocate arrays where possible
+max_arrivals = ceil((lambda1 + lambda2) * sim_time * 1.5); % Add a buffer
+arrivals_H1 = zeros(max_arrivals, 1);
+arrivals_H2 = zeros(max_arrivals, 1);
+departures = zeros(max_arrivals, 3); % [arrival_time, departure_time, source]
+queue = zeros(queue_size, 2); % [arrival_time, source]
+
+% Generate arrivals
+arrivals_H1_temp = poisson_process(lambda1, sim_time);
+arrivals_H1(1:length(arrivals_H1_temp)) = arrivals_H1_temp;
+arrivals_H1 = arrivals_H1(1:length(arrivals_H1_temp)); % Trim unused space
+
+arrivals_H2_temp = poisson_process(lambda2, sim_time);
+arrivals_H2(1:length(arrivals_H2_temp)) = arrivals_H2_temp;
+arrivals_H2 = arrivals_H2(1:length(arrivals_H2_temp)); % Trim unused space
+
+% Create initial event list
+events_H1 = [arrivals_H1, ones(length(arrivals_H1), 1)];
+events_H2 = [arrivals_H2, 2*ones(length(arrivals_H2), 1)];
+event_list = sortrows([events_H1; events_H2], 1);
+num_events = size(event_list, 1);
+
+next_available = 0;
+queue_count = 0;
+departures_count = 0;
+dropped = 0;
+total_packets = 0;
+
+% Optimization 2: Use a while loop with index for event list
+event_index = 1;
+while event_index <= num_events
+    event = event_list(event_index, :);
+    event_time = event(1);
+    source = event(2);
+    event_index = event_index + 1;
+
+    if event_time <= sim_time
+        if event_time >= next_available
+            tx_time = (packet_size * 8) / B;
+            prop_delay = Tp;
+
+            dep_time = event_time + tx_time + prop_delay;
+            departures_count = departures_count + 1;
+            departures(departures_count, :) = [event_time, dep_time, source];
+            next_available = dep_time;
+            total_packets = total_packets + 1;
+
+            if queue_count > 0
+                queue_packet = queue(1, :);
+                % Optimization 3: Shift queue elements instead of recreating
+                queue(1:queue_count-1, :) = queue(2:queue_count, :);
+                queue_count = queue_count - 1;
+                % Optimization 4: Insert back into event list efficiently
+                event_list = [event_list(1:event_index-1, :); queue_packet; event_list(event_index:end, :)];
+                event_list = sortrows(event_list, 1);
+                num_events = num_events + 1; % Update number of events
+            end
+        else
+            if queue_count < queue_size
+                queue_count = queue_count + 1;
+                queue(queue_count, :) = [event_time, source];
+            else
+                dropped = dropped + 1;
+            end
+        end
+    end
+end
+
+% Trim unused space in departures
+departures = departures(1:departures_count, :);
+
+total_departures = size(departures, 1);
+throughput = (total_departures * packet_size * 8) / sim_time / 1e6;
+avg_delay = mean(departures(:, 2) - departures(:, 1));
+packet_loss_rate = dropped / (length(arrivals_H1) + length(arrivals_H2)) * 100;
+
+disp(['Throughput: ', num2str(throughput), ' Mbps']);
+disp(['Average Delay: ', num2str(avg_delay), ' seconds']);
+disp(['Packet Loss Rate: ', num2str(packet_loss_rate), '%']);
+
+figure;
+subplot(3, 1, 1);
+plot(arrivals_H1, 'r*');
+hold on;
+plot(arrivals_H2, 'bo');
+title('Packet Arrivals at Router');
+xlabel('Time (s)');
+ylabel('Packet Arrival Times');
+legend('Host 1', 'Host 2');
+grid on;
+
+subplot(3, 1, 2);
+transmission_times_H1 = departures(departures(:, 3) == 1, 2);
+transmission_times_H2 = departures(departures(:, 3) == 2, 2);
+plot(transmission_times_H1, 'r*');
+hold on;
+plot(transmission_times_H2, 'bo');
+title('Packet Transmissions');
+xlabel('Time (s)');
+ylabel('Transmission Times');
+legend('Host 1', 'Host 2');
+grid on;
+
+subplot(3, 1, 3);
+cumulative_sent_H1 = cumsum(ismember(departures(:, 3), 1));
+cumulative_sent_H2 = cumsum(ismember(departures(:, 3), 2));
+plot(departures(:, 2), cumulative_sent_H1, 'r-');
+hold on;
+plot(departures(:, 2), cumulative_sent_H2, 'b-');
+title('Cumulative Packets Sent Over Time');
+xlabel('Time (s)');
+ylabel('Cumulative Packets Sent');
+legend('Host 1', 'Host 2');
+grid on;
+
+function arrivals = poisson_process(lambda, sim_time)
+    inter_arrivals = -log(rand(ceil(lambda * sim_time * 1.5), 1)) / lambda; % Add buffer
+    arrivals = cumsum(inter_arrivals);
+    arrivals = arrivals(arrivals <= sim_time);
+end
