@@ -1,0 +1,44 @@
+% Parameters
+G = linspace(0.1, 2, 100); % Increased resolution for better peak capture
+aloha_throughput = G .* exp(-2 * G);
+slotted_aloha_throughput = G .* exp(-G);
+aloha_collision_rate = 1 - exp(-2 * G);
+slotted_aloha_collision_rate = 1 - exp(-G);
+
+% Find maximum throughputs and corresponding G values
+[max_aloha_throughput, aloha_max_index] = max(aloha_throughput);
+max_aloha_G = G(aloha_max_index);
+[max_slotted_aloha_throughput, slotted_aloha_max_index] = max(slotted_aloha_throughput);
+max_slotted_aloha_G = G(slotted_aloha_max_index);
+
+% Displaying Results in Text
+fprintf('Pure ALOHA:\n');
+fprintf('  Maximum Throughput: %.4f (%.2f%%)\n', max_aloha_throughput, max_aloha_throughput * 100);
+fprintf('  Offered Traffic (G) at Max Throughput: %.4f\n', max_aloha_G);
+fprintf('Slotted ALOHA:\n');
+fprintf('  Maximum Throughput: %.4f (%.2f%%)\n', max_slotted_aloha_throughput, max_slotted_aloha_throughput * 100);
+fprintf('  Offered Traffic (G) at Max Throughput: %.4f\n', max_slotted_aloha_G);
+
+% Plotting Throughput
+figure;
+plot(G, aloha_throughput, 'b-', 'LineWidth', 1.5);
+hold on;
+plot(G, slotted_aloha_throughput, 'r-', 'LineWidth', 1.5);
+title('ALOHA vs. Slotted ALOHA Throughput');
+xlabel('Offered Traffic (G)');
+ylabel('Throughput (S)');
+legend('ALOHA', 'Slotted ALOHA');
+grid on;
+hold off;
+
+% Plotting Collision Rate
+figure;
+plot(G, aloha_collision_rate, 'b-', 'LineWidth', 1.5);
+hold on;
+plot(G, slotted_aloha_collision_rate, 'r-', 'LineWidth', 1.5);
+title('ALOHA vs. Slotted ALOHA Collision Rate');
+xlabel('Offered Traffic (G)');
+ylabel('Collision Rate');
+legend('ALOHA', 'Slotted ALOHA');
+grid on;
+hold off;
